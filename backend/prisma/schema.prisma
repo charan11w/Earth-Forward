@@ -1,0 +1,37 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+
+enum Role { RESIDENT WORKER ADMIN }
+enum BinType { HOUSEHOLD COMMUNITY PUBLIC }
+enum BinStatus { REQUESTED APPROVED ACTIVE DAMAGED REMOVED }
+enum BinRequestStatus { REQUESTED APPROVED SCHEDULED DELIVERED REJECTED }
+enum ServiceType { NORMAL_PICKUP EXTRA_CLEANING }
+enum PickupStatus { CREATED QUEUED ASSIGNED IN_PROGRESS PICKED_UP COMPLETED FAILED_ACCESS CANCELLED }
+enum TruckStatus { AVAILABLE ASSIGNED IN_SERVICE MAINTENANCE }
+enum RouteStatus { PLANNED ASSIGNED IN_PROGRESS COMPLETED CANCELLED }
+enum RouteStopStatus { PENDING IN_PROGRESS COMPLETED FAILED_ACCESS SKIPPED }
+enum PointTransactionType { PICKUP_REWARD COMMUNITY_REWARD REDEMPTION EXTRA_SERVICE_DEDUCTION ADMIN_ADJUSTMENT }
+enum RedemptionStatus { REQUESTED APPROVED FULFILLED CANCELLED }
+enum ComplaintStatus { OPEN UNDER_REVIEW ACTION_PLANNED RESOLVED REJECTED }
+enum HotspotPriority { LOW MEDIUM HIGH CRITICAL }
+enum HotspotStatus { OPEN UNDER_REVIEW ACTION_PLANNED RESOLVED }
+enum HotspotActionType { DEPLOY_COMMUNITY_BIN DEPLOY_BOARD SEND_MANAGER CONTACT_NEARBY_HOUSEHOLDS SCHEDULE_CLEANUP }
+enum ActionStatus { PLANNED IN_PROGRESS COMPLETED CANCELLED }
+enum CommunityBinRequestStatus { SUBMITTED UNDER_REVIEW APPROVED REJECTED DEPLOYED }
+
+model User { id String @id @default(cuid()) name String email String @unique phone String? passwordHash String role Role @default(RESIDENT) trashPoints Int @default(0) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt addresses Address[] bins Bin[] binRequests BinRequest[] pickups PickupRequest[] complaints Complaint[] pointTransactions TrashPointTransaction[] redemptions RewardRedemption[] communityBinRequests CommunityBinRequest[] workerRoutes Route[] @relation("WorkerRoutes") }
+model Address { id String @id @default(cuid()) userId String user User @relation(fields:[userId],references:[id],onDelete:Cascade) addressLine String area String landmark String? latitude Float longitude Float accessNotes String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt binRequests BinRequest[] pickups PickupRequest[] @@index([userId]) }
+model Bin { id String @id @default(cuid()) ownerUserId String? owner User? @relation(fields:[ownerUserId],references:[id],onDelete:SetNull) type BinType size String latitude Float longitude Float address String status BinStatus @default(REQUESTED) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt pickups PickupRequest[] }
+model BinRequest { id String @id @default(cuid()) userId String user User @relation(fields:[userId],references:[id],onDelete:Cascade) type BinType size String reason String addressId String address Address @relation(fields:[addressId],references:[id]) status BinRequestStatus @default(REQUESTED) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt @@index([userId,status]) }
+model PickupRequest { id String @id @default(cuid()) userId String user User @relation(fields:[userId],references:[id]) addressId String address Address @relation(fields:[addressId],references:[id]) binId String? bin Bin? @relation(fields:[binId],references:[id]) wasteType String quantity Float latitude Float longitude Float accessNotes String? serviceType ServiceType @default(NORMAL_PICKUP) status PickupStatus @default(CREATED) pointsAwarded Int @default(0) routeId String? route Route? @relation("PickupRoute",fields:[routeId],references:[id]) routeStop RouteStop? completedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt @@index([status]) @@index([userId,binId,status]) }
+model Truck { id String @id @default(cuid()) name String registrationNumber String @unique capacity Float status TruckStatus @default(AVAILABLE) currentLatitude Float currentLongitude Float active Boolean @default(true) routes Route[] }
+model Route { id String @id @default(cuid()) truckId String truck Truck @relation(fields:[truckId],references:[id]) workerId String? worker User? @relation("WorkerRoutes",fields:[workerId],references:[id]) date DateTime clusterId String totalDistance Float estimatedMinutes Int status RouteStatus @default(PLANNED) startedAt DateTime? completedAt DateTime? stops RouteStop[] pickups PickupRequest[] @relation("PickupRoute") createdAt DateTime @default(now()) }
+model RouteStop { id String @id @default(cuid()) routeId String route Route @relation(fields:[routeId],references:[id],onDelete:Cascade) pickupRequestId String @unique pickupRequest PickupRequest @relation(fields:[pickupRequestId],references:[id]) sequence Int latitude Float longitude Float status RouteStopStatus @default(PENDING) alternatePointId String? alternatePoint AlternatePoint? @relation(fields:[alternatePointId],references:[id]) completedAt DateTime? @@unique([routeId,sequence]) }
+model AlternatePoint { id String @id @default(cuid()) name String latitude Float longitude Float address String active Boolean @default(true) stops RouteStop[] }
+model TrashPointTransaction { id String @id @default(cuid()) userId String user User @relation(fields:[userId],references:[id]) amount Int type PointTransactionType referenceId String? description String createdAt DateTime @default(now()) @@index([userId,createdAt]) }
+model Reward { id String @id @default(cuid()) name String description String pointsCost Int stock Int active Boolean @default(true) createdAt DateTime @default(now()) redemptions RewardRedemption[] }
+model RewardRedemption { id String @id @default(cuid()) userId String user User @relation(fields:[userId],references:[id]) rewardId String reward Reward @relation(fields:[rewardId],references:[id]) pointsCost Int status RedemptionStatus @default(REQUESTED) createdAt DateTime @default(now()) }
+model Complaint { id String @id @default(cuid()) userId String user User @relation(fields:[userId],references:[id]) latitude Float longitude Float address String category String description String photoUrl String? status ComplaintStatus @default(OPEN) hotspotId String? hotspot WasteHotspot? @relation(fields:[hotspotId],references:[id]) createdAt DateTime @default(now()) @@index([hotspotId]) }
+model WasteHotspot { id String @id @default(cuid()) latitude Float longitude Float address String complaintCount Int @default(0) uniqueReporterCount Int @default(0) priority HotspotPriority @default(LOW) status HotspotStatus @default(OPEN) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt complaints Complaint[] actions HotspotAction[] }
+model HotspotAction { id String @id @default(cuid()) hotspotId String hotspot WasteHotspot @relation(fields:[hotspotId],references:[id],onDelete:Cascade) type HotspotActionType description String assignedTo String? status ActionStatus @default(PLANNED) createdAt DateTime @default(now()) completedAt DateTime? }
+model CommunityBinRequest { id String @id @default(cuid()) userId String user User @relation(fields:[userId],references:[id]) latitude Float longitude Float address String reason String householdEstimate Int description String photoUrl String? status CommunityBinRequestStatus @default(SUBMITTED) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }

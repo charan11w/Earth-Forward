@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: earth_forward
+      POSTGRES_USER: earth_forward
+      POSTGRES_PASSWORD: earth_forward
+    ports:
+      - "5432:5432"
+    volumes:
+      - earth_forward_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U earth_forward -d earth_forward"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  earth_forward_postgres:
+

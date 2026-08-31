@@ -1,0 +1,3 @@
+import { distanceMeters, type Point } from './geo.service';
+export type ClusterItem=Point&{id:string}; export type Cluster={id:string;center:Point;items:ClusterItem[]};
+export function clusterByRadius(items:ClusterItem[],radius=1000):Cluster[]{ const clusters:Cluster[]=[]; for(const item of items){ let c=clusters.find(x=>distanceMeters(x.center,item)<=radius); if(!c){c={id:`cluster-${clusters.length+1}`,center:{latitude:item.latitude,longitude:item.longitude},items:[]};clusters.push(c);} c.items.push(item); c.center={latitude:c.items.reduce((s,i)=>s+i.latitude,0)/c.items.length,longitude:c.items.reduce((s,i)=>s+i.longitude,0)/c.items.length}; } return clusters; }

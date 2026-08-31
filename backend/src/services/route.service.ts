@@ -1,0 +1,2 @@
+import { distanceMeters,type Point } from './geo.service';
+export function nearestNeighbor<T extends Point>(start:Point,items:T[]){ const left=[...items],ordered:T[]=[];let current=start,totalDistance=0; while(left.length){let idx=0,best=Infinity;left.forEach((p,i)=>{const d=distanceMeters(current,p);if(d<best){best=d;idx=i;}});const [chosen]=left.splice(idx,1);ordered.push(chosen);totalDistance+=best;current=chosen;} return {ordered,totalDistance,estimatedMinutes:Math.max(1,Math.ceil(totalDistance/250))}; }

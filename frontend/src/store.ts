@@ -1,0 +1,2 @@
+import{configureStore,createSlice,PayloadAction}from'@reduxjs/toolkit';
+type Role='resident'|'worker'|'admin'; const session=createSlice({name:'session',initialState:{role:'resident' as Role,name:'Charan',points:120},reducers:{setRole:(s,a:PayloadAction<Role>)=>{s.role=a.payload},spend:(s,a:PayloadAction<number>)=>{s.points-=a.payload}}});export const{setRole,spend}=session.actions;export const store=configureStore({reducer:{session:session.reducer}});export type RootState=ReturnType<typeof store.getState>;
