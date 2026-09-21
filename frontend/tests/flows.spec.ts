@@ -9,8 +9,8 @@ const email=(name:string)=>tag+'-'+name+'@example.test';
 const userIds:string[]=[],truckIds:string[]=[],binIds:string[]=[];
 async function signIn(page:Page,who='admin',driver=false){
   await page.goto(driver?'/auth/driver':'/auth/login',{waitUntil:'domcontentloaded'});
-  await page.getByLabel('Email',{exact:true}).fill(email(who));
-  await page.getByLabel('Password',{exact:true}).fill(password);
+  await page.getByLabel('Email',{exact:true}).click();await page.getByLabel('Email',{exact:true}).fill(email(who));
+  await page.getByLabel('Password',{exact:true}).click();await page.getByLabel('Password',{exact:true}).fill(password);
   const response=page.waitForResponse(r=>r.url().endsWith(driver?'/api/auth/driver/login':'/api/auth/login'));
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   expect((await response).status()).toBe(200);
@@ -53,8 +53,8 @@ test('registration, profile photo/phone, map address, saved pickup, breadcrumbs 
   await expect(page.getByLabel('Phone',{exact:true})).toHaveCount(0);
   await expect(page.getByLabel('Address',{exact:true})).toHaveCount(0);
   await page.getByLabel('Full name').fill(tag+' Resident');
-  await page.getByLabel('Email',{exact:true}).fill(email('resident'));
-  await page.getByLabel('Password',{exact:true}).fill(password);
+  await page.getByLabel('Email',{exact:true}).click();await page.getByLabel('Email',{exact:true}).fill(email('resident'));
+  await page.getByLabel('Password',{exact:true}).click();await page.getByLabel('Password',{exact:true}).fill(password);
   await page.getByLabel('Confirm password').fill(password);
   const registered=page.waitForResponse(r=>r.url().endsWith('/api/auth/register'));
   await page.getByRole('button',{name:'Create account',exact:true}).click();
@@ -98,7 +98,7 @@ test('admin user details, adding trucks/bins, grouped routes and driver collecti
     await page.goto('/admin/users',{waitUntil:'domcontentloaded'});
     await page.getByRole('button',{name:'Add new user'}).click();
     await page.getByLabel('Full name').fill(tag+' '+side+' driver');
-    await page.getByLabel('Email',{exact:true}).fill(email(side));
+    await page.getByLabel('Email',{exact:true}).click();await page.getByLabel('Email',{exact:true}).fill(email(side));
     await page.getByLabel('Initial password').fill(password);
     const created=page.waitForResponse(r=>r.url().endsWith('/api/admin/users')&&r.request().method()==='POST');
     await page.getByRole('button',{name:'Create account',exact:true}).click();
@@ -137,7 +137,7 @@ test('admin user details, adding trucks/bins, grouped routes and driver collecti
   expect(routes.find((r:any)=>r.truckId===truckIds[0]).stops[0].binId).toBe(binIds[0]);
   expect(routes.find((r:any)=>r.truckId===truckIds[1]).stops[0].binId).toBe(binIds[1]);
   page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Sign out'}).click();
-  await page.getByLabel('Email',{exact:true}).fill(email('west'));await page.getByLabel('Password',{exact:true}).fill(password);
+  await page.getByLabel('Email',{exact:true}).click();await page.getByLabel('Email',{exact:true}).fill(email('west'));await page.getByLabel('Password',{exact:true}).click();await page.getByLabel('Password',{exact:true}).fill(password);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('alert')).toContainText('truck driver sign-in');
   await page.getByRole('link',{name:'Truck driver sign in'}).click();

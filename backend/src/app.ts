@@ -1,2 +1,42 @@
-import express from 'express';import cors from 'cors';import helmet from 'helmet';import morgan from 'morgan';import rateLimit from 'express-rate-limit';import { env } from './config/env';import { createCorsOptions } from './config/cors';import auth from './modules/auth/routes';import core from './modules/core/routes';import pickups from './modules/pickups/routes';import routes from './modules/routes/routes';import workers from './modules/workers/routes';import rewards from './modules/rewards/routes';import community from './modules/community/routes';import admin from './modules/admin/routes';import { errorHandler,notFound } from './middleware/errorHandler';
-export const app=express();app.set('trust proxy',1);app.use(helmet());app.use(cors(createCorsOptions(env.CLIENT_ORIGIN,env.NODE_ENV)));app.use(express.json({limit:'1mb'}));app.use(morgan(env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:300,standardHeaders:'draft-8'}));app.get('/api/health',(_req,res)=>res.json({status:'ok',timestamp:new Date().toISOString()}));app.use('/api/auth',auth);app.use('/api',core);app.use('/api/pickups',pickups);app.use('/api/routes',routes);app.use('/api/worker',workers);app.use('/api',rewards);app.use('/api',community);app.use('/api/admin',admin);app.use(notFound);app.use(errorHandler);
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import { env } from './config/env';
+import { createCorsOptions } from './config/cors';
+import auth from './modules/auth/routes';
+import core from './modules/core/routes';
+import pickups from './modules/pickups/routes';
+import routes from './modules/routes/routes';
+import workers from './modules/workers/routes';
+import rewards from './modules/rewards/routes';
+import community from './modules/community/routes';
+import admin from './modules/admin/routes';
+import { errorHandler, notFound } from './middleware/errorHandler';
+
+export const app = express();
+app.set('trust proxy', 1);
+app.use(helmet());
+app.use(cors(createCorsOptions(env.CLIENT_ORIGIN, env.NODE_ENV)));
+
+// Public liveness check: no authentication, database query, or API rate limit.
+// Keep the existing /api/health URL for clients and local Vite proxy checks.
+app.get(['/health', '/ping', '/api/health', '/api/ping'], (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.use(express.json({ limit: '1mb' }));
+app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-8' }));
+app.use('/api/auth', auth);
+app.use('/api', core);
+app.use('/api/pickups', pickups);
+app.use('/api/routes', routes);
+app.use('/api/worker', workers);
+app.use('/api', rewards);
+app.use('/api', community);
+app.use('/api/admin', admin);
+app.use(notFound);
+app.use(errorHandler);

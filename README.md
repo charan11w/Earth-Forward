@@ -1,77 +1,190 @@
-﻿# Earth Forward
+# Earth Forward
 
-A database-backed community waste collection app with resident, administrator and truck-driver workflows. Runtime screens use PostgreSQL records only; there is no mock mode or sample-bin seeding.
+**Earth Forward is a community waste collection app that connects residents, administrators, and truck drivers.** Residents request pickups and report waste locations. Administrators manage bins and vehicles, then assign collection routes. Drivers follow their assigned stops and record collection outcomes.
 
-## Run locally (Windows)
+The app brings the collection workflow into one place: a resident's saved address becomes a pickup request, an administrator assigns it to a truck, and the driver's completion updates the request and the resident's TrashPoints balance.
 
-From D:\Desktop\hackathon:
+## Who uses it?
 
-1. Start the project database in PowerShell:
-   `& .\scripts\start-database.ps1`
-2. Start the API in a terminal:
-   `npm run dev --prefix backend`
-3. Start the frontend in another terminal:
-   `npm run dev --prefix frontend -- --host 127.0.0.1`
-4. Open the Vite URL, normally http://127.0.0.1:5173.
+| Role | What they can do | Sign-in page |
+| --- | --- | --- |
+| Resident | Request pickups, find nearby bins, request household/community bins, report waste, manage saved addresses, and redeem TrashPoints. | `/auth/login` |
+| Administrator | View users, create driver accounts, manage trucks and bins, assign routes, review requests and hotspots, and create rewards. | `/auth/login` |
+| Truck driver | View their assigned routes, locate public bins, open directions, and mark stops collected or inaccessible. | `/auth/driver` |
 
-The API uses port 4000. Vite proxies /api to it, including when the frontend moves to another port. API_PROXY_TARGET in frontend/.env can change the local backend target. For a separately deployed frontend, set VITE_API_URL to the deployed API URL and CLIENT_ORIGIN on the API to the frontend origin.
+Public registration at `/auth/register` creates a resident account using only a name, email, and password. Administrators create driver accounts. The first administrator is provisioned through the bootstrap command described below.
 
-Press Ctrl+C in both application terminals to stop them. To stop the project database:
+## Main features
 
-```powershell
-& "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" -D "D:\Desktop\hackathon\.local-postgres" -m fast stop
+- **Map-based addresses:** search for a place, use the current location, or select/drag a pin. Address and area details fill automatically when lookup succeeds; users can edit them and add landmarks and access instructions.
+- **Profiles and saved locations:** name, photo, optional phone number, and multiple saved addresses. The default address is preselected when requesting a pickup. Submitted pickups retain an address snapshot so later profile edits do not change the original instructions.
+- **Pickup tracking:** residents see request history, collection status, and assigned truck/driver details. Eligible requests can be cancelled before assignment.
+- **Fleet and bin management:** administrators register real trucks and public/community bins, assign one driver to a truck, and mark bins that need collection.
+- **Route planning:** preview how selected bins and pending pickups will be distributed across available trucks before assigning the routes.
+- **Driver collection tools:** ordered stops, location maps, landmarks, road-navigation links, and collection/failure updates.
+- **TrashPoints and rewards:** completed pickups earn points; residents can view transactions and redeem available rewards.
+- **Community reporting:** residents submit waste reports; administrators review resulting hotspots and record follow-up actions.
+- **Navigation and account handling:** role-specific dashboards, breadcrumbs, profile links, and confirmation before logout. Sign-in forms start empty on each visit and browser page restoration, with autofill suppression until a field is focused.
+
+Screens use records from PostgreSQL. Empty accounts show empty states until users or administrators add actual data; there is no runtime mock-data mode.
+
+## How a collection works
+
+1. A resident saves an address using the map and submits a pickup request with waste details.
+2. An administrator creates driver accounts, adds trucks and their starting positions, and registers public/community bins.
+3. In **Routes**, the administrator selects available trucks and collection points, previews the plan, and confirms assignments.
+4. A driver signs in through the driver portal, starts an assigned route, and follows its ordered stops.
+5. The driver confirms collection or records an inaccessible stop. The app updates pickup/bin status and awards points for completed resident pickups.
+6. Once all stops on a route have been handled, the truck becomes available for another route.
+
+### What the route planner calculates
+
+The planner assigns each selected collection point to a nearby truck with remaining capacity, then orders that truck's stops by proximity. Truck capacity currently means **maximum collection stops per run**, not weight or volume. Points that exceed the selected fleet's capacity are shown as unassigned in the preview.
+
+Distances and durations are estimates based on geographic proximity. The dashed map line shows the stop sequence; it is not a traffic-aware road route or a guarantee of the shortest possible journey. Drivers open the navigation link for road directions.
+
+Active trucks and drivers are excluded from new plans. Database transactions coordinate route assignment and completion to prevent duplicate assignments and repeated collection rewards. Collected public bins stop appearing as collection-needed until an administrator marks them ready again.
+
+## Technology and structure
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, React Router |
+| Client state and server data | Redux Toolkit, TanStack Query |
+| Maps and place lookup | Leaflet, OpenStreetMap tiles, Photon |
+| Backend | Node.js, Express, TypeScript, Zod |
+| Authentication | JWT sessions, bcrypt password hashes, role/ownership checks |
+| Database | PostgreSQL through Prisma |
+| Verification | Vitest and Playwright |
+
+```text
+Browser (React)
+  | HTTP requests with a session token
+  v
+Express API
+  | Prisma queries and transactions
+  v
+PostgreSQL
+
+Browser maps -> OpenStreetMap tiles + Photon place lookup
 ```
 
-The separate project PostgreSQL data directory is .local-postgres on port 5433. Credentials are in the ignored backend/.env file. Starting and stopping preserves saved records.
+```text
+frontend/
+  src/components/features/   Resident, admin, driver, and authentication screens
+  src/components/common/     Shared maps, address editor, and UI components
+  src/components/layout/     Navigation, breadcrumbs, and logout
+  src/services/              API, authentication, and geocoding clients
+  src/store.ts               Session state
+  tests/                     Browser workflow tests
+  vercel.json                Frontend deployment and deep-link configuration
+backend/
+  src/modules/               API endpoints grouped by feature
+  src/services/              Dispatch, allocation, points, and other business logic
+  src/config/                Environment, database, and CORS settings
+  prisma/schema.prisma       Data model
+  prisma/bootstrap.ts        First-administrator setup
+  tests/                     Unit and API integration tests
+scripts/start-database.ps1    Local Windows PostgreSQL helper
+DEPLOYMENT.md                Vercel, Render, Neon, and cron setup
+```
 
-## First-time setup
+## Set up locally
 
-Install dependencies with `npm install --prefix backend` and `npm install --prefix frontend`. Set up the database connection and JWT secret in backend/.env, then run `npm run db:push`.
+You need Node.js with npm and a reachable PostgreSQL database. Run the commands below from the repository root. The optional Windows helper expects PostgreSQL 18 in `C:\Program Files\PostgreSQL\18\bin`; edit its `postgresBin` setting if your installation differs.
 
-For an empty database, set ADMIN_NAME, ADMIN_EMAIL and ADMIN_PASSWORD (at least 12 characters) in backend/.env and run `npm run db:bootstrap`. This creates the first administrator only. It does not create residents, drivers, trucks, bins, rewards or sample requests. Existing administrators are preserved. db:seed is a compatibility alias for this same non-destructive setup.
+### 1. Install dependencies
 
-On Windows, stop the API before schema updates or production builds so Prisma can regenerate its native engine without a file lock. Restart the API afterwards.
+```powershell
+npm ci --prefix backend
+npm ci --prefix frontend
+```
 
-## Accounts and profiles
+### 2. Configure PostgreSQL and environment variables
 
-- Residents and admins sign in at /auth/login.
-- Drivers sign in separately at /auth/driver using accounts created by an administrator.
-- Public registration accepts name, email and password and always creates a resident.
-- My profile supports name, optional phone number, a profile photo, and saved addresses.
-- Addresses support a map/search pin, automatic address/area lookup, editable house details, landmarks and access notes. The default address is preselected for pickup requests.
-- Submitted pickups keep an address snapshot, so later profile edits do not change earlier collection instructions.
-- Logout asks for confirmation and clears the app session and form state.
+Choose one database setup:
 
-## Administrator workflow
+- **Project-local database on Windows:** run `& .\scripts\start-database.ps1`. On first use, it creates `.local-postgres`, generates database/JWT secrets in `backend/.env`, and starts PostgreSQL on `127.0.0.1:5433`. It refuses to overwrite an existing backend environment file when initializing a new cluster.
+- **Existing local or hosted PostgreSQL:** copy `backend/.env.example` to `backend/.env` only if the file does not already exist. Set `DATABASE_URL` to your database and replace `JWT_SECRET` with a long random value. Use your existing database service instead of the Windows helper.
 
-1. Users & drivers: create driver accounts and open actual user details.
-2. Trucks: add a truck, select its starting location, set its maximum stops per run and assign one driver.
-3. Bins: register actual public/community bin locations, size and collection-needed status.
-4. Routes: select available trucks and actual bins/pending household pickups, preview assignments, then assign them.
-5. Review pickup requests, household/community bin requests, hotspots and rewards from their corresponding pages.
+Create `frontend/.env` from `frontend/.env.example` if needed. For local development, keep `VITE_API_URL=/api`.
 
-Trucks already working on active routes are excluded from new plans. Drivers cannot be assigned to multiple trucks. Busy trucks and assigned bins cannot be edited until their routes close.
+| Setting | Location | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | `backend/.env` | PostgreSQL connection string |
+| `JWT_SECRET` | `backend/.env` | Secret for signing session tokens |
+| `PORT` | `backend/.env` | API port; defaults to `4000` locally |
+| `CLIENT_ORIGIN` | `backend/.env` | Allowed frontend origins; comma-separated when needed |
+| `VITE_API_URL` | `frontend/.env` | `/api` locally; full backend URL ending in `/api` when deployed |
+| `API_PROXY_TARGET` | `frontend/.env` | Local Vite proxy target; defaults to `http://127.0.0.1:4000` |
 
-## Driver workflow and planning
+Keep environment files and database credentials out of Git. The repository's `.gitignore` already excludes them.
 
-Drivers see only their own routes and can browse registered public bin locations. Each route shows ordered stops, addresses, landmarks/access notes and a map. Drivers start the route, open road navigation for each stop, and confirm collection or mark a stop inaccessible.
+### 3. Create tables and the first administrator
 
-The planner assigns each selected point to a nearby truck with remaining capacity, then orders that truck's stops by proximity. Capacity means maximum collection stops per run. Unassigned points are explicitly shown in the preview when capacity is insufficient. Distances and durations are estimates based on straight-line proximity; the dashed map line shows stop order, not a road or traffic model. Navigation links open road directions.
+With PostgreSQL running, apply the schema:
 
-Assignment and completion use database transactions with a dispatch lock to prevent overlapping assignments and duplicate collection rewards. Completing all stops releases the truck. Collected public bins are marked as no longer needing collection; admins can mark them ready for another collection when needed.
+```powershell
+npm run db:push --prefix backend
+```
 
-## Maps
+For a new database, add `ADMIN_NAME`, `ADMIN_EMAIL`, and a unique `ADMIN_PASSWORD` of 12-72 characters to `backend/.env`, then run:
 
-Leaflet displays OpenStreetMap tiles and attribution. Photon provides submitted place searches and reverse lookup of selected points. Users can edit returned details, and manual address entry remains available when lookup fails.
+```powershell
+npm run db:bootstrap --prefix backend
+```
 
-Optional frontend environment settings:
-- VITE_MAP_TILE_URL: OpenStreetMap-compatible tile template
-- VITE_GEOCODER_URL: Photon-compatible search URL
-- VITE_GEOCODER_REVERSE_URL: Photon-compatible reverse lookup URL
+This creates the first administrator only. If one already exists, it leaves the account unchanged. It does not create sample drivers, trucks, bins, or requests. Remove the `ADMIN_*` setup values after provisioning. `db:seed` is a compatibility alias for this same bootstrap process.
 
-Public map/search services need internet access and are intended for modest traffic. Configure an appropriate provider or your own service for larger deployments. See https://operations.osmfoundation.org/policies/tiles/ and https://github.com/komoot/photon.
+On Windows, stop the API before commands that regenerate Prisma, such as schema updates and backend production builds, to avoid locking its native engine file.
 
-## Validation
+## Start and stop the app
+
+Start your PostgreSQL service first. If using the project-local Windows database:
+
+```powershell
+& .\scripts\start-database.ps1
+```
+
+Start the API in one terminal:
+
+```powershell
+npm run dev --prefix backend
+```
+
+Start the frontend in another terminal:
+
+```powershell
+npm run dev --prefix frontend -- --host 127.0.0.1
+```
+
+Open the URL printed by Vite, normally **http://127.0.0.1:5173**. The API listens on port **4000**. Vite proxies `/api` requests to the backend, including when Vite chooses a different available frontend port.
+
+To stop the frontend and API, press **Ctrl+C** in each terminal. To stop the project-local database, run from the repository root:
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" -D "$PWD\.local-postgres" -m fast stop
+```
+
+Stopping preserves saved records. If you use a different PostgreSQL service, stop it through that service's own controls.
+
+## Maps and external services
+
+Leaflet displays OpenStreetMap tiles; Photon provides place search and reverse lookup. Map selection keeps the exact chosen coordinates, and users can enter address details manually if lookup fails. Geolocation requires browser permission and a secure context such as HTTPS or localhost.
+
+Optional frontend settings are `VITE_MAP_TILE_URL`, `VITE_GEOCODER_URL`, and `VITE_GEOCODER_REVERSE_URL`. The map/search services require internet access; deployment and provider considerations are covered in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Health checks
+
+The backend exposes public `GET` and `HEAD` routes at `/health`, `/ping`, `/api/health`, and `/api/ping`. They require no authentication and sit outside the API rate limit.
+
+```powershell
+curl.exe http://127.0.0.1:4000/health
+```
+
+GET returns `{"status":"ok","timestamp":"..."}`. This checks that the HTTP server is running; it does not query or validate PostgreSQL. See the deployment guide for scheduled HTTP checks.
+
+## Tests and builds
 
 ```powershell
 npm run typecheck --prefix backend
@@ -81,4 +194,10 @@ npm run build --prefix frontend
 npm test --prefix frontend
 ```
 
-Integration/browser tests require the local API, database and frontend. Set LIVE_APP_URL to use a different frontend port. Tests create temporary, uniquely identified records and clean up only their own data. External map search is intercepted in browser tests for deterministic results; the running app has no test-data fallback.
+The API integration tests need PostgreSQL and the API running. Browser tests also need the frontend; set `LIVE_APP_URL` if it runs on another URL. Tests create temporary records and clean up their own data. Map lookups are intercepted in browser tests so checks do not depend on external search results.
+
+To build the backend, stop its development server on Windows and run `npm run build --prefix backend`. Run the compiled API with `npm start --prefix backend`.
+
+## Deploy
+
+Follow **[DEPLOYMENT.md](DEPLOYMENT.md)** for the Vercel frontend, Render API, and Neon PostgreSQL setup. It includes the current free-plan constraints, build commands, secrets, administrator provisioning, CORS settings, and optional cron monitoring.

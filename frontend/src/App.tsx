@@ -1,4 +1,5 @@
-﻿import { Navigate,Route,Routes,useLocation } from 'react-router-dom';
+import { useEffect,useRef } from 'react';
+import { Navigate,Route,Routes,useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState,homeFor } from './store';
 import Shell from './components/layout/Shell';
@@ -10,7 +11,11 @@ import { WorkerDashboard,RouteDetail } from './components/features/worker/Worker
 import { AdminDashboard,AdminUsers,AdminUserDetail,AdminTrucks,AdminBins,AdminRoutes,RoutePlanner,AdminRequests,AdminHotspots,AdminRewards } from './components/features/admin/Admin';
 function S({children}:{children:React.ReactNode}){
   const {token,role}=useSelector((s:RootState)=>s.session),{pathname}=useLocation();
-  if(!token)return <Navigate to="/auth/login" replace/>;
+  // Session clearing resets the Redux role before logout navigation commits.
+  // Keep the last signed-in role so drivers also leave /profile for their portal.
+  const lastRole=useRef(role);
+  useEffect(()=>{if(token)lastRole.current=role;},[token,role]);
+  if(!token)return <Navigate to={lastRole.current==='worker'||pathname.startsWith('/worker')?'/auth/driver':'/auth/login'} replace/>;
   if(pathname!=='/profile'){
     const required=pathname.startsWith('/admin')?'admin':pathname.startsWith('/worker')?'worker':'resident';
     if(role!==required)return <Navigate to={homeFor(role)} replace/>;
