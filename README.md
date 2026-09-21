@@ -1,116 +1,84 @@
-# Earth Forward
+﻿# Earth Forward
 
-Earth Forward is a hackathon-ready smart community waste collection platform. It includes a resident experience, worker route workflow, admin operations, geographic pickup clustering, nearest-neighbor route generation, hotspot detection, and a transaction-safe TrashPoints wallet.
+A database-backed community waste collection app with resident, administrator and truck-driver workflows. Runtime screens use PostgreSQL records only; there is no mock mode or sample-bin seeding.
 
-## Repository
+## Run locally (Windows)
 
-- `frontend/` — React, TypeScript, Vite, TanStack Query, Redux Toolkit
-- `backend/` — Node.js, Express, TypeScript, PostgreSQL, Prisma
-- `docker-compose.yml` — optional local PostgreSQL 16 database
+From D:\Desktop\hackathon:
 
-## Local setup
+1. Start the project database in PowerShell:
+   `& .\scripts\start-database.ps1`
+2. Start the API in a terminal:
+   `npm run dev --prefix backend`
+3. Start the frontend in another terminal:
+   `npm run dev --prefix frontend -- --host 127.0.0.1`
+4. Open the Vite URL, normally http://127.0.0.1:5173.
 
-Prerequisites: Node.js 20+, npm, and PostgreSQL (your installed PostgreSQL is fine).
+The API uses port 4000. Vite proxies /api to it, including when the frontend moves to another port. API_PROXY_TARGET in frontend/.env can change the local backend target. For a separately deployed frontend, set VITE_API_URL to the deployed API URL and CLIENT_ORIGIN on the API to the frontend origin.
 
-1. Install dependencies:
+Press Ctrl+C in both application terminals to stop them. To stop the project database:
 
-   ```bash
-   npm install
-   npm run install:all
-   ```
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" -D "D:\Desktop\hackathon\.local-postgres" -m fast stop
+```
 
-2. Copy the environment templates:
+The separate project PostgreSQL data directory is .local-postgres on port 5433. Credentials are in the ignored backend/.env file. Starting and stopping preserves saved records.
 
-   ```bash
-   cp backend/.env.example backend/.env
-   cp frontend/.env.example frontend/.env
-   ```
+## First-time setup
 
-   On Windows PowerShell, use `Copy-Item` instead of `cp` if desired. Put your local PostgreSQL connection string in `backend/.env`; never commit that file.
+Install dependencies with `npm install --prefix backend` and `npm install --prefix frontend`. Set up the database connection and JWT secret in backend/.env, then run `npm run db:push`.
 
-3. Create and seed the database:
+For an empty database, set ADMIN_NAME, ADMIN_EMAIL and ADMIN_PASSWORD (at least 12 characters) in backend/.env and run `npm run db:bootstrap`. This creates the first administrator only. It does not create residents, drivers, trucks, bins, rewards or sample requests. Existing administrators are preserved. db:seed is a compatibility alias for this same non-destructive setup.
 
-   ```bash
-   npm run db:push
-   npm run db:bootstrap
-   ```
+On Windows, stop the API before schema updates or production builds so Prisma can regenerate its native engine without a file lock. Restart the API afterwards.
 
-4. Run both applications:
+## Accounts and profiles
 
-   ```bash
-   npm run dev
-   ```
+- Residents and admins sign in at /auth/login.
+- Drivers sign in separately at /auth/driver using accounts created by an administrator.
+- Public registration accepts name, email and password and always creates a resident.
+- My profile supports name, optional phone number, a profile photo, and saved addresses.
+- Addresses support a map/search pin, automatic address/area lookup, editable house details, landmarks and access notes. The default address is preselected for pickup requests.
+- Submitted pickups keep an address snapshot, so later profile edits do not change earlier collection instructions.
+- Logout asks for confirmation and clears the app session and form state.
 
-The frontend runs at `http://localhost:5173`; the API runs at `http://localhost:4000/api`. The frontend defaults to demo/mock mode so it works before PostgreSQL is connected. Set `VITE_USE_MOCKS=false` to use the API.
+## Administrator workflow
 
-## Deployment
+1. Users & drivers: create driver accounts and open actual user details.
+2. Trucks: add a truck, select its starting location, set its maximum stops per run and assign one driver.
+3. Bins: register actual public/community bin locations, size and collection-needed status.
+4. Routes: select available trucks and actual bins/pending household pickups, preview assignments, then assign them.
+5. Review pickup requests, household/community bin requests, hotspots and rewards from their corresponding pages.
 
-Deploy `backend/` and `frontend/` as separate Vercel projects with their respective directory as the project root.
+Trucks already working on active routes are excluded from new plans. Drivers cannot be assigned to multiple trucks. Busy trucks and assigned bins cannot be edited until their routes close.
 
-For the backend, create a free PostgreSQL database (for example Neon or Supabase) and configure `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `CORS_ORIGIN`, and `NODE_ENV=production`. Run Prisma migrations against that database before the demo.
+## Driver workflow and planning
 
-For the frontend, configure `VITE_API_URL` to the deployed backend URL ending in `/api` and set `VITE_USE_MOCKS=false`. For a frontend-only demo, leave mock mode enabled.
+Drivers see only their own routes and can browse registered public bin locations. Each route shows ordered stops, addresses, landmarks/access notes and a map. Drivers start the route, open road navigation for each stop, and confirm collection or mark a stop inaccessible.
 
-## Demo accounts
+The planner assigns each selected point to a nearby truck with remaining capacity, then orders that truck's stops by proximity. Capacity means maximum collection stops per run. Unassigned points are explicitly shown in the preview when capacity is insufficient. Distances and durations are estimates based on straight-line proximity; the dashed map line shows stop order, not a road or traffic model. Navigation links open road directions.
 
-The seed script creates admin, worker, and resident accounts. See `backend/prisma/seed.ts` for the current emails and demo password.
+Assignment and completion use database transactions with a dispatch lock to prevent overlapping assignments and duplicate collection rewards. Completing all stops releases the truck. Collected public bins are marked as no longer needing collection; admins can mark them ready for another collection when needed.
 
-## Security notes
+## Maps
 
-- Passwords are hashed and authentication uses JWT bearer tokens.
-- Roles and ownership are enforced server-side.
-- Point awards, deductions, and reward stock changes are transaction-safe and recorded in a ledger.
-- Secrets are loaded only from environment variables.
+Leaflet displays OpenStreetMap tiles and attribution. Photon provides submitted place searches and reverse lookup of selected points. Users can edit returned details, and manual address entry remains available when lookup fails.
 
+Optional frontend environment settings:
+- VITE_MAP_TILE_URL: OpenStreetMap-compatible tile template
+- VITE_GEOCODER_URL: Photon-compatible search URL
+- VITE_GEOCODER_REVERSE_URL: Photon-compatible reverse lookup URL
 
-## Location maps and sign-in
+Public map/search services need internet access and are intended for modest traffic. Configure an appropriate provider or your own service for larger deployments. See https://operations.osmfoundation.org/policies/tiles/ and https://github.com/komoot/photon.
 
-Open http://127.0.0.1:5173/auth/login. All roles use the same sign-in page; the account role determines the dashboard. Public registration creates resident accounts only. The role switch has been replaced with a signed-in role indicator and a working sign-out button.
+## Validation
 
-Local demo credentials:
-- Resident: resident1@earthforward.demo
-- Admin: admin@earthforward.demo
-- Worker: worker1@earthforward.demo
-- Password for all three: Demo@123
+```powershell
+npm run typecheck --prefix backend
+npm test --prefix backend
+npm run test:integration --prefix backend
+npm run build --prefix frontend
+npm test --prefix frontend
+```
 
-With VITE_USE_MOCKS=true (the default), registrations and requests are browser-local demonstrations, not server authentication. Use only demo passwords. Sessions survive refresh within the same tab. Newly created pickups persist in local storage per account and appear in My pickups with their saved coordinates.
-
-With VITE_USE_MOCKS=false, login/register use the backend JWT endpoints, and API requests include the bearer token. The backend checks permissions; public registration cannot grant admin access. Admin accounts must be provisioned by the operator. The existing seed script creates the demo accounts above, but it deletes existing database records, so use it only with a disposable demo database. A running backend and configured PostgreSQL database are required for API mode.
-
-Pickup forms support place search, clicking the map, dragging the pin, and browser geolocation. Enter a street address and area after selecting the exact point. API mode creates the address and then the pickup using that address ID. Nearby bins have selectable markers, distance from the chosen origin, and OpenStreetMap directions. Demo bin positions are illustrative Bengaluru locations.
-
-Maps use Leaflet and OpenStreetMap tiles, with attribution. Search uses the public Photon demo service and requires no API key. Searches run only on explicit submission and cache repeated queries. Public services require internet access and are intended here for modest demo traffic; Photon offers no availability guarantee and may throttle heavy use. Configure your own provider for production volume:
-- VITE_MAP_TILE_URL (default: https://tile.openstreetmap.org/{z}/{x}/{y}.png)
-- VITE_GEOCODER_URL (default: https://photon.komoot.io/api/; Photon-compatible API)
-
-Provider policies: https://operations.osmfoundation.org/policies/tiles/ and https://github.com/komoot/photon
-Geolocation requires localhost or HTTPS and browser permission. If search or geolocation fails, manual map selection remains available.
-
-Frontend validation: npm run build --prefix frontend
-Browser tests: npm test --prefix frontend (first install the browser with: cd frontend; npx playwright install chromium).
-
-
-## Running the local database-backed app
-
-This workspace is now configured for API mode in the ignored frontend/.env file. The API uses a separate PostgreSQL cluster in .local-postgres on port 5433; the previously installed PostgreSQL service on port 5432 is unchanged. Generated connection credentials and JWT secret are stored only in the ignored backend/.env file.
-
-After restarting Windows:
-1. From the project directory in PowerShell, run: & .\scripts\start-database.ps1
-2. Start the API in one terminal: npm run dev --prefix backend
-3. Start the frontend in another: npm run dev --prefix frontend -- --host 127.0.0.1
-4. Open http://127.0.0.1:5173/auth/login
-
-On a fresh project database, run npm run db:push followed by npm run db:bootstrap before starting the API. Bootstrap adds missing local example accounts and public bins without deleting records or changing existing passwords. The older db:seed script is a destructive reset and should only be used deliberately against a disposable database.
-
-The local starter credentials remain resident1@earthforward.demo and admin@earthforward.demo, both with password Demo@123. New registrations create real resident records. Residents' pickup addresses and selected coordinates persist in PostgreSQL; admins can see those requests under Pickups and open their saved map locations.
-
-Verification:
-- npm run build --prefix backend
-- npm run build --prefix frontend
-- npm run test:integration --prefix backend (requires the local API and database)
-- npm test --prefix frontend (isolated demo server on port 5175)
-- npm run test:live --prefix frontend (requires the live app on 5173 and API on 4000)
-
-Live tests create temporary test accounts and clean up only their own records. Browser-local demo accounts and requests from earlier sessions are not migrated into PostgreSQL. Sign in again if an earlier demo session was open.
-
-Local API requests now use VITE_API_URL=/api and Vite proxies them to http://127.0.0.1:4000. This works if Vite chooses another port, such as 5174. Set API_PROXY_TARGET to change the local backend port. For separately hosted production deployments, set VITE_API_URL to the deployed API URL and set the backend CLIENT_ORIGIN to the exact frontend origin. Extra loopback origins are allowed only with NODE_ENV=development. Registration asks for name, email, and password; no phone number is collected.
+Integration/browser tests require the local API, database and frontend. Set LIVE_APP_URL to use a different frontend port. Tests create temporary, uniquely identified records and clean up only their own data. External map search is intercepted in browser tests for deterministic results; the running app has no test-data fallback.

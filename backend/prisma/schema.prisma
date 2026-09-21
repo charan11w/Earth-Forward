@@ -242,27 +242,28 @@ model BinRequest {
 }
 
 model PickupRequest {
-  id            String       @id @default(cuid())
-  userId        String
-  user          User         @relation(fields: [userId], references: [id])
-  addressId     String
-  address       Address      @relation(fields: [addressId], references: [id])
-  binId         String?
-  bin           Bin?         @relation(fields: [binId], references: [id])
-  wasteType     String
-  quantity      Float
-  latitude      Float
-  longitude     Float
-  accessNotes   String?
-  serviceType   ServiceType  @default(NORMAL_PICKUP)
-  status        PickupStatus @default(CREATED)
-  pointsAwarded Int          @default(0)
-  routeId       String?
-  route         Route?       @relation("PickupRoute", fields: [routeId], references: [id])
-  routeStop     RouteStop?
-  completedAt   DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  addressSnapshot Json?
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id])
+  addressId       String
+  address         Address      @relation(fields: [addressId], references: [id])
+  binId           String?
+  bin             Bin?         @relation(fields: [binId], references: [id])
+  wasteType       String
+  quantity        Float
+  latitude        Float
+  longitude       Float
+  accessNotes     String?
+  serviceType     ServiceType  @default(NORMAL_PICKUP)
+  status          PickupStatus @default(CREATED)
+  pointsAwarded   Int          @default(0)
+  routeId         String?
+  route           Route?       @relation("PickupRoute", fields: [routeId], references: [id])
+  routeStop       RouteStop?
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   @@index([status])
   @@index([userId, binId, status])

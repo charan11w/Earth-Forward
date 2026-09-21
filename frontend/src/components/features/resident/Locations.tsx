@@ -7,7 +7,7 @@ import { Badge,Card,Field,PageHead } from '../../common/UI';
 import QueryStatus from '../../common/QueryStatus';
 import LocationMap,{defaultLocation,Location,MapPoint} from '../../common/LocationMap';
 import AddressEditor,{AddressDraft,addressPayload,emptyAddress} from '../../common/AddressEditor';
-export async function loadPickups():Promise<any[]>{return api(store.getState().session.role==='admin'?'/admin/pickups':'/pickups/my');}
+export async function loadPickups():Promise<any[]>{const rows=await api<any[]>(store.getState().session.role==='admin'?'/admin/pickups':'/pickups/my');return rows.map(p=>({...p,address:p.addressSnapshot||p.address}));}
 const settings={
   pickup:{title:'Request a pickup',options:['General','Recyclable','Organic']},
   bin:{title:'Request a household bin',options:['Small','Medium','Large']},

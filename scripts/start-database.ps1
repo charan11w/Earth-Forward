@@ -15,7 +15,7 @@ if (!(Test-Path (Join-Path $databaseRoot 'PG_VERSION'))) {
     & (Join-Path $postgresBin 'initdb.exe') -D $databaseRoot -U earth_forward --auth=scram-sha-256 --pwfile=$passwordFile --encoding=UTF8 --locale=C
     if ($LASTEXITCODE -ne 0) { throw 'Database initialization failed.' }
     $settings = @(
-      "DATABASE_URL=postgresql://earth_forward:$databasePassword@127.0.0.1:5433/earth_forward?schema=public"
+      "DATABASE_URL=postgresql://earth_forward:$databasePassword@127.0.0.1:5433/earth_forward?schema=public&connection_limit=5&pool_timeout=30&connect_timeout=30"
       "JWT_SECRET=$jwtSecret"
       'PORT=4000'
       'CLIENT_ORIGIN=http://127.0.0.1:5173,http://localhost:5173'

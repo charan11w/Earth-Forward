@@ -9,6 +9,7 @@ export default function AddressEditor({value,onChange,children,showLabel=false}:
   const latest=useRef(value);latest.current=value;
   const version=useRef(0),controller=useRef<AbortController>();const [lookup,setLookup]=useState(false),[error,setError]=useState('');
   useEffect(()=>()=>{version.current++;controller.current?.abort();},[]);
+  useEffect(()=>{if(value.id||value.latitude===undefined){version.current++;controller.current?.abort();setLookup(false);}},[value.id,value.latitude===undefined]);
   function change(d:AddressDraft){latest.current=d;onChange(d);}
   function edit(key:keyof AddressDraft,v:string|boolean){
     // A late geocoder reply must never overwrite details the user is editing.

@@ -1,17 +1,15 @@
-# Earth Forward API
+﻿# Earth Forward API
 
-Express, TypeScript, PostgreSQL and Prisma backend for the Earth Forward hackathon demo.
+Express, TypeScript, Prisma and PostgreSQL.
 
-## Local setup
+Set DATABASE_URL, JWT_SECRET and CLIENT_ORIGIN in .env, install dependencies, and run `npm run db:push`. For an empty database, set ADMIN_NAME, ADMIN_EMAIL and ADMIN_PASSWORD and run `npm run db:bootstrap`. No sample data is created.
 
-1. Copy `.env.example` to `.env` and set `DATABASE_URL` and a strong `JWT_SECRET`.
-2. Run `npm install`.
-3. Run `npm run db:push` (or create a migration with `npm run db:migrate`).
-4. Run `npm run db:bootstrap` for demo data.
-5. Run `npm run dev`. The health endpoint is `GET /api/health`.
+Run `npm run dev` for development. Stop the API before `npm run build` on Windows to avoid Prisma DLL locks. Start compiled code with `npm start`.
 
-All protected endpoints use `Authorization: Bearer <token>`. Demo seed accounts share password `Demo@123`.
+Residents/admins use POST /api/auth/login; drivers use POST /api/auth/driver/login. Public registration creates residents only. Authenticated routes require an Authorization: Bearer token.
 
-## Vercel
+Profile and address APIs are under /api/users/me and /api/addresses. Admin management is under /api/admin. Route planning uses /api/routes/planning, /preview and /generate. Driver operations are under /api/worker.
 
-Set `DATABASE_URL`, `JWT_SECRET`, and `CLIENT_ORIGIN` in the Vercel project. Use a pooled PostgreSQL connection URL for serverless deployments. `api/index.ts` exports the Express app without starting a persistent listener.
+Truck capacity is maximum stops per run. Route assignment and completion are serialized with a PostgreSQL transaction advisory lock. Distances are geographic estimates; no traffic-aware or globally optimal road-routing guarantee is made.
+
+Run `npm test` for unit/CORS tests and `npm run test:integration` against the local API/database. See the project README for the complete workflow.
