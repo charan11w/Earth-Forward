@@ -1,2 +1,30 @@
-import { Router } from 'express';import { prisma } from '../../config/prisma';import { asyncHandler,AppError } from '../../lib/http';import { requireAuth,requireRole } from '../../middleware/auth';import { applyPoints } from '../../services/points.service';
-const r=Router();r.use(requireAuth,requireRole('WORKER','ADMIN'));r.get('/routes',asyncHandler(async(req,res)=>res.json(await prisma.route.findMany({where:req.auth!.role==='WORKER'?{workerId:req.auth!.userId}:{},include:{truck:true,stops:{orderBy:{sequence:'asc'},include:{pickupRequest:true}}}}))));r.post('/pickups/:id/complete',asyncHandler(async(req,res)=>{const result=await prisma.$transaction(async tx=>{const pickup=await tx.pickupRequest.findUnique({where:{id:req.params.id},include:{routeStop:true,route:true}});if(!pickup||!pickup.routeStop)throw new AppError(404,'Assigned pickup not found');if(req.auth!.role==='WORKER'&&pickup.route?.workerId!==req.auth!.userId)throw new AppError(403,'Pickup is not assigned to you');if(pickup.status==='COMPLETED')throw new AppError(409,'Pickup already completed');const amount=pickup.serviceType==='EXTRA_CLEANING'?-5:10;await applyPoints(tx,pickup.userId,amount,pickup.serviceType==='EXTRA_CLEANING'?'EXTRA_SERVICE_DEDUCTION':'PICKUP_REWARD',pickup.id,pickup.serviceType==='EXTRA_CLEANING'?'Extra cleaning service':'Confirmed pickup reward');const completedAt=new Date();await tx.routeStop.update({where:{id:pickup.routeStop.id},data:{status:'COMPLETED',completedAt}});return tx.pickupRequest.update({where:{id:pickup.id},data:{status:'COMPLETED',pointsAwarded:amount,completedAt}});});res.json(result);}));export default r;
+﻿import { Router } from 'express';
+import { prisma } from '../../config/prisma';
+import { asyncHandler,AppError,paramId } from '../../lib/http';
+import { requireAuth,requireRole } from '../../middleware/auth';
+import { routeInclude } from '../../lib/models';
+import { completeStop,dispatchLock } from '../../services/dispatch.service';
+const r=Router();r.use(requireAuth,requireRole('WORKER','ADMIN'));
+r.get('/routes',asyncHandler(async(req,res)=>res.json(await prisma.route.findMany({where:req.auth!.role==='WORKER'?{workerId:req.auth!.userId}:{},include:routeInclude,orderBy:{createdAt:'desc'}}))));
+r.post('/routes/:id/start',asyncHandler(async(req,res)=>{
+  res.json(await prisma.$transaction(async tx=>{
+    await dispatchLock(tx);
+    const route=await tx.route.findUnique({where:{id:paramId(req)}});
+    if(!route)throw new AppError(404,'Route not found');
+    if(req.auth!.role!=='ADMIN'&&route.workerId!==req.auth!.userId)throw new AppError(403,'Not your route');
+    if(route.status!=='ASSIGNED')throw new AppError(409,'Route has already started or finished');
+    await tx.truck.update({where:{id:route.truckId},data:{status:'IN_SERVICE'}});
+    await tx.pickupRequest.updateMany({where:{routeId:route.id,status:'ASSIGNED'},data:{status:'IN_PROGRESS'}});
+    return tx.route.update({where:{id:route.id},data:{status:'IN_PROGRESS',startedAt:new Date()},include:routeInclude});
+  }));
+}));
+for(const action of ['complete','failed-access'])r.post('/stops/:id/'+action,asyncHandler(async(req,res)=>{
+  res.json(await prisma.$transaction(tx=>completeStop(tx,paramId(req),req.auth!.userId,req.auth!.role,action==='failed-access'),{timeout:15000}));
+}));
+r.post('/pickups/:id/complete',asyncHandler(async(req,res)=>{
+  const stop=await prisma.routeStop.findUnique({where:{pickupRequestId:paramId(req)}});
+  if(!stop)throw new AppError(404,'Assigned pickup not found');
+  res.json(await prisma.$transaction(tx=>completeStop(tx,stop.id,req.auth!.userId,req.auth!.role)));
+}));
+export default r;
+

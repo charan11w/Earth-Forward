@@ -1,0 +1,66 @@
+﻿import { test, expect } from '@playwright/test';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+const backendRequire = createRequire(path.resolve('../backend/package.json'));
+backendRequire('dotenv').config({ path: '../backend/.env', quiet: true });
+const { PrismaClient } = backendRequire('@prisma/client');
+const db = new PrismaClient();
+let userId: string | undefined;
+test.afterAll(async () => {
+  if (userId) {
+    await db.pickupRequest.deleteMany({ where: { userId } });
+    await db.address.deleteMany({ where: { userId } });
+    await db.user.delete({ where: { id: userId } });
+  }
+  await db.$disconnect();
+});
+test('real registration, saved location and admin review across sessions', async ({ page }) => {
+  await page.route('https://fonts.googleapis.com/**', route => route.abort());
+  await page.context().grantPermissions(['geolocation']);
+  await page.context().setGeolocation({ latitude: 12.976543, longitude: 77.598765 });
+  const email = 'browser-' + Date.now() + '@example.test';
+  await page.goto('/auth/register', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByLabel('Phone', { exact: true })).toHaveCount(0);
+  await page.getByLabel('Full name').fill('Browser Test Resident');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Password', { exact: true }).fill('TestPass123');
+  await page.getByLabel('Confirm password').fill('TestPass123');
+  const registered = page.waitForResponse(r => r.url().endsWith('/api/auth/register'));
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  const response = await registered;
+  expect(response.request().postDataJSON()).not.toHaveProperty('phone');
+  expect(new URL(response.url()).origin).toBe(new URL(page.url()).origin);
+  expect(response.status()).toBe(201);
+  userId = (await response.json()).user.id;
+  await expect(page).toHaveURL(/app\/dashboard/);
+  await page.goto('/app/pickups/new', { waitUntil: 'domcontentloaded' });
+  await page.getByLabel('Pickup address').fill('42 Browser Test Road');
+  await page.getByLabel('Area / neighborhood').fill('Bengaluru');
+  await page.getByRole('button', { name: 'Use my location' }).click();
+  await expect(page.getByText('Selected: 12.976543, 77.598765')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit request' }).click();
+  await expect(page.getByRole('heading', { name: 'Request submitted!' })).toBeVisible();
+  await page.getByRole('link', { name: 'View my pickups' }).click();
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByText('42 Browser Test Road')).toBeVisible();
+  const pickup = await db.pickupRequest.findFirstOrThrow({ where: { userId } });
+  expect(pickup.latitude).toBe(12.976543);
+  expect(pickup.longitude).toBe(77.598765);
+  await page.goto('/app/bins/nearby', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'View location' }).first().click();
+  await expect(page.locator('.selected-bin')).toBeVisible();
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByLabel('Email', { exact: true }).fill('admin@earthforward.demo');
+  await page.getByLabel('Password', { exact: true }).fill('Demo@123');
+  const signedIn = page.waitForResponse(r => r.url().endsWith('/api/auth/login'));
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  expect((await signedIn).status()).toBe(200);
+  await expect(page).toHaveURL(/admin\/dashboard/);
+  await page.getByRole('link', { name: 'Pickups', exact: true }).click();
+  await expect(page.getByText('42 Browser Test Road')).toBeVisible();
+  await page.locator('a[href="/admin/pickups/' + pickup.id + '"]').click();
+  await expect(page).toHaveURL(new RegExp('/admin/pickups/' + pickup.id));
+  await expect(page.getByText('Selected: 12.976543, 77.598765')).toBeVisible();
+  await page.screenshot({ path: 'test-results/live-admin-pickup.png', fullPage: true });
+});
+

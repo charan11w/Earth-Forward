@@ -8,3 +8,8 @@ coverage/
 .vercel/
 backend/prisma/*.db
 
+*.tsbuildinfo
+playwright-report/
+test-results/
+.local-postgres/
+.local-postgres-password

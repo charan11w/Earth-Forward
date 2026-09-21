@@ -1,3 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
 export class AppError extends Error { constructor(public status:number, message:string, public details?:unknown){ super(message); } }
 export const asyncHandler = (fn:(req:Request,res:Response,next:NextFunction)=>Promise<unknown>) => (req:Request,res:Response,next:NextFunction) => { Promise.resolve(fn(req,res,next)).catch(next); };
+
+export function paramId(req: Request, key = 'id'): string { const id = req.params[key]; if(typeof id !== 'string') throw new AppError(400, 'Invalid record ID'); return id; }

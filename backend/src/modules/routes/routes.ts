@@ -1,2 +1,41 @@
-import { Router } from 'express';import { z } from 'zod';import { prisma } from '../../config/prisma';import { asyncHandler,AppError } from '../../lib/http';import { requireAuth,requireRole } from '../../middleware/auth';import { clusterByRadius } from '../../services/clustering.service';import { nearestNeighbor } from '../../services/route.service';import { env } from '../../config/env';
-const r=Router();r.use(requireAuth);r.post('/generate',requireRole('ADMIN'),asyncHandler(async(req,res)=>{const input=z.object({truckId:z.string(),workerId:z.string().optional()}).parse(req.body);const truck=await prisma.truck.findFirst({where:{id:input.truckId,active:true}});if(!truck)throw new AppError(404,'Active truck not found');const pickups=await prisma.pickupRequest.findMany({where:{status:{in:['CREATED','QUEUED']}}});if(!pickups.length)throw new AppError(409,'No pending pickups');const clusters=clusterByRadius(pickups,env.CLUSTER_RADIUS_METERS);const created=[];for(const c of clusters){const optimized=nearestNeighbor(truck,c.items);const route=await prisma.$transaction(async tx=>{const route=await tx.route.create({data:{truckId:truck.id,workerId:input.workerId,date:new Date(),clusterId:c.id,totalDistance:optimized.totalDistance,estimatedMinutes:optimized.estimatedMinutes,status:input.workerId?'ASSIGNED':'PLANNED'}});await tx.routeStop.createMany({data:optimized.ordered.map((p,i)=>({routeId:route.id,pickupRequestId:p.id,sequence:i+1,latitude:p.latitude,longitude:p.longitude}))});await tx.pickupRequest.updateMany({where:{id:{in:optimized.ordered.map(p=>p.id)}},data:{routeId:route.id,status:'ASSIGNED'}});return tx.route.findUniqueOrThrow({where:{id:route.id},include:{stops:{orderBy:{sequence:'asc'},include:{pickupRequest:true}},truck:true,worker:{select:{id:true,name:true}}}});});created.push(route);}res.status(201).json(created);}));r.get('/:id',asyncHandler(async(req,res)=>{const route=await prisma.route.findUnique({where:{id:req.params.id},include:{truck:true,worker:{select:{id:true,name:true}},stops:{orderBy:{sequence:'asc'},include:{pickupRequest:true}}}});if(!route)throw new AppError(404,'Route not found');if(req.auth!.role==='WORKER'&&route.workerId!==req.auth!.userId)throw new AppError(403,'Not your route');res.json(route);}));export default r;
+﻿import { Router } from 'express';
+import { z } from 'zod';
+import { prisma } from '../../config/prisma';
+import { asyncHandler,AppError,paramId } from '../../lib/http';
+import { requireAuth,requireRole } from '../../middleware/auth';
+import { routeInclude } from '../../lib/models';
+import { dispatchLock,makePlan,planningData } from '../../services/dispatch.service';
+const r=Router();r.use(requireAuth,requireRole('ADMIN','WORKER'));
+const inputSchema=z.object({truckIds:z.array(z.string()).min(1).max(50),binIds:z.array(z.string()).max(500).default([]),pickupIds:z.array(z.string()).max(500).default([])});
+r.get('/planning',requireRole('ADMIN'),asyncHandler(async(_req,res)=>res.json(await planningData(prisma))));
+r.post('/preview',requireRole('ADMIN'),asyncHandler(async(req,res)=>res.json(await makePlan(prisma,inputSchema.parse(req.body)))));
+r.post('/generate',requireRole('ADMIN'),asyncHandler(async(req,res)=>{
+  const input=inputSchema.parse(req.body);
+  const result=await prisma.$transaction(async tx=>{
+    await dispatchLock(tx);
+    const plan=await makePlan(tx,input),created=[];
+    for(const group of plan.routes){
+      const route=await tx.route.create({data:{
+        truckId:group.truckId,workerId:group.truck.driverId,date:new Date(),clusterId:crypto.randomUUID(),
+        totalDistance:group.totalDistance,estimatedMinutes:group.estimatedMinutes+group.ordered.length*3,
+        startLatitude:group.truck.currentLatitude,startLongitude:group.truck.currentLongitude,status:'ASSIGNED'
+      }});
+      for(const [i,job] of group.ordered.entries()){
+        await tx.routeStop.create({data:{routeId:route.id,sequence:i+1,latitude:job.latitude,longitude:job.longitude,address:job.address,notes:job.notes,...(job.kind==='bin'?{binId:job.id}:{pickupRequestId:job.id})}});
+        if(job.kind==='pickup')await tx.pickupRequest.update({where:{id:job.id},data:{routeId:route.id,status:'ASSIGNED'}});
+      }
+      await tx.truck.update({where:{id:group.truckId},data:{status:'ASSIGNED'}});
+      created.push(await tx.route.findUniqueOrThrow({where:{id:route.id},include:routeInclude}));
+    }
+    return {routes:created,unassigned:plan.unassigned};
+  },{timeout:30000});res.status(201).json(result);
+}));
+r.get('/',asyncHandler(async(req,res)=>res.json(await prisma.route.findMany({where:req.auth!.role==='WORKER'?{workerId:req.auth!.userId}:{},include:routeInclude,orderBy:{createdAt:'desc'}}))));
+r.get('/:id',asyncHandler(async(req,res)=>{
+  const route=await prisma.route.findUnique({where:{id:paramId(req)},include:routeInclude});
+  if(!route)throw new AppError(404,'Route not found');
+  if(req.auth!.role!=='ADMIN'&&route.workerId!==req.auth!.userId)throw new AppError(403,'This route belongs to another driver');
+  res.json(route);
+}));
+export default r;
+
