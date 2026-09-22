@@ -8,6 +8,7 @@ coverage/
 .vercel/
 backend/prisma/*.db
 
+*.md
 *.tsbuildinfo
 playwright-report/
 test-results/
